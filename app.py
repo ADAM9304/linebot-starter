@@ -1,4 +1,4 @@
-我要怎麼把prompt寫入這段
+
 
 import os
 
