@@ -82,15 +82,28 @@ def webhook():
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     user_msg = event.message.text
+
     try:
+        prompt = f"""
+{SYSTEM_PROMPT}
+
+學生問題：
+{user_msg}
+
+請從「提示1」開始回答，不要打招呼，不要多說廢話。
+"""
+
         response = client.models.generate_content(
             model='gemini-2.5-flash',
-            contents=user_msg
+            contents=prompt
         )
+
         reply = response.text
+
     except Exception as e:
         print(f'Gemini error: {e}')
         reply = f'錯誤：{str(e)}'
+
     line_bot_api.reply_message(
         event.reply_token,
         TextSendMessage(text=reply)
