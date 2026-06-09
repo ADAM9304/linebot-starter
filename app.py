@@ -31,6 +31,8 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 
 client = genai.Client(api_key=GEMINI_API_KEY)
+with open("math_knowledge_base.txt", "r", encoding="utf-8") as f:
+    KNOWLEDGE_BASE = f.read()
 
 SYSTEM_PROMPT = """
 
@@ -209,19 +211,17 @@ def handle_message(event):
 
 
     try:
-
         prompt = f"""
+        {SYSTEM_PROMPT}
 
-{SYSTEM_PROMPT}
+        【教學資料】
+        {KNOWLEDGE_BASE}
 
-
-
-學生題目：
-
-{user_msg}
-
+        學生題目：
+        {user_msg}
 """
 
+  
 
 
         response = client.models.generate_content(
