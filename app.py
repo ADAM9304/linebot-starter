@@ -9,7 +9,6 @@ from linebot.models import MessageEvent, TextMessage, TextSendMessage
 from google import genai
 
 app = Flask(__name__)
-
 # ======================
 # LINE / Gemini 設定
 # ======================
