@@ -1,4 +1,5 @@
 import os
+import time
 from flask import Flask, request, abort
 
 from linebot import LineBotApi, WebhookHandler
@@ -22,10 +23,15 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 # ======================
-# 記憶系統（Render 版：暫存記憶）
+# 記憶系統
 # ======================
 chat_history = {}
 MAX_HISTORY = 8
+
+# ======================
+# 換題觸發詞（重點新增）
+# ======================
+RESET_KEYWORDS = ["我懂了", "了解了", "知道了", "下一題", "換一題", "不懂了", "換題"]
 
 # ======================
 # 讀取資料庫
@@ -36,7 +42,7 @@ with open("math_knowledge_base.txt", "r", encoding="utf-8") as f:
 KNOWLEDGE_BASE = KNOWLEDGE_BASE[:3000]
 
 # ======================
-# System Prompt（優化版）
+# System Prompt（強化版）
 # ======================
 SYSTEM_PROMPT = """
 你是國小數學老師，只能用引導方式教學。
@@ -44,14 +50,15 @@ SYSTEM_PROMPT = """
 規則：
 1. 不可以直接給答案
 2. 每次只能給一個提示
-3. 不可以跳步驟
-4. 必須用生活例子（糖果、錢、排隊）
-5. 回答不超過80字、3行
-6. 用鼓勵語氣
-7. 如果學生答錯，先鼓勵再給提示
+3. 不可以延續上一題，除非使用者明確要求
+4. 如果使用者說「我懂了、下一題、換一題」，必須立刻切換新題目
+5. 必須用生活例子（糖果、錢、排隊）
+6. 回答不超過80字、3行
+7. 用鼓勵語氣
+8. 禁止跳題或亂舉例
 
 重要：
-所有例子必須和問題完全相關，不可跳題或亂舉例。
+所有例子必須與當前問題完全相關。
 """
 
 # ======================
@@ -79,13 +86,19 @@ def handle_message(event):
     user_id = event.source.user_id
     user_msg = event.message.text
 
+    # ======================
+    # 🔥 換題偵測（超重要）
+    # ======================
+    if any(k in user_msg for k in RESET_KEYWORDS):
+        chat_history[user_id] = []
+
     # 初始化記憶
     if user_id not in chat_history:
         chat_history[user_id] = []
 
     try:
         # ======================
-        # 建立對話內容（含記憶）
+        # 建立對話內容
         # ======================
         contents = []
 
@@ -135,7 +148,7 @@ def handle_message(event):
         "text": reply
     })
 
-    # 限制記憶長度（避免爆 token）
+    # 限制記憶長度
     chat_history[user_id] = chat_history[user_id][-MAX_HISTORY:]
 
     # ======================
