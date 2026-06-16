@@ -1,5 +1,6 @@
 import os
 import time
+import traceback
 from flask import Flask, request, abort
 
 from linebot import LineBotApi, WebhookHandler
@@ -73,9 +74,6 @@ SYSTEM_PROMPT = """
    - 「很好，我們繼續」
    - 「不錯，再看下一步」
    - 「很接近了」
-
-
-
 """
 
 # ======================
@@ -119,37 +117,99 @@ def handle_message(event):
         # ======================
         contents = []
 
-        # system prompt
         contents.append({
             "role": "user",
             "parts": [{"text": SYSTEM_PROMPT}]
         })
 
-        # history
         for msg in chat_history[user_id]:
             contents.append({
                 "role": msg["role"],
                 "parts": [{"text": msg["text"]}]
             })
 
-        # current user message
         contents.append({
             "role": "user",
             "parts": [{"text": user_msg}]
         })
 
         # ======================
-        # 呼叫 Gemini
+        # 呼叫 Gemini（已升級：重試 + 備用模型）
         # ======================
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=contents
-        )
 
-        reply = response.text.strip()
+        MODELS = [
+            "gemini-2.5-flash",
+            "gemini-2.0-flash"
+        ]
+
+        reply = None
+        last_error = None
+
+        for model_name in MODELS:
+
+            for attempt in range(3):
+
+                try:
+
+                    print(
+                        f"[Gemini] model={model_name} attempt={attempt + 1}"
+                    )
+
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=contents
+                    )
+
+                    reply = response.text.strip()
+
+                    print(
+                        f"[Gemini] Success model={model_name}"
+                    )
+
+                    break
+
+                except Exception as e:
+
+                    last_error = e
+                    error_text = str(e)
+
+                    print(
+                        f"[Gemini Error] model={model_name} attempt={attempt + 1}"
+                    )
+                    print(error_text)
+
+                    if "503" in error_text or "UNAVAILABLE" in error_text:
+
+                        wait_time = 2 * (attempt + 1)
+
+                        print(f"[Retry] waiting {wait_time}s...")
+                        time.sleep(wait_time)
+                        continue
+
+                    elif "429" in error_text or "RESOURCE_EXHAUSTED" in error_text:
+
+                        reply = "目前使用人數較多，請稍後再試。"
+                        break
+
+                    else:
+                        break
+
+            if reply:
+                break
+
+        if not reply:
+
+            print("[Gemini Final Error]", last_error)
+
+            reply = "系統目前較忙碌，請稍後再試一次。"
 
     except Exception as e:
-        print("Gemini error:", e)
+
+        print("Gemini error:")
+        print(e)
+
+        traceback.print_exc()
+
         reply = "系統忙碌，請再試一次"
 
     # ======================
@@ -165,7 +225,6 @@ def handle_message(event):
         "text": reply
     })
 
-    # 限制記憶長度
     chat_history[user_id] = chat_history[user_id][-MAX_HISTORY:]
 
     # ======================
